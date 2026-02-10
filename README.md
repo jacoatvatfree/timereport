@@ -7,12 +7,13 @@ Generate time entry reports from your GitHub commits and Slack huddles.
 This tool consists of 3 Python scripts:
 
 1. **`generate-github-report.py`** - Extracts time from GitHub commits
-2. **`generate-slack-report.py`** - Extracts time from Slack huddles  
+2. **`generate-slack-report.py`** - Extracts time from Slack huddles
 3. **`format-time-report.py`** - Formats JSON data into readable time entries
 
 ## Features
 
 ### GitHub Report
+
 - Fetches all your commits from the last week (Monday-Sunday) by default
 - Groups commits by Pull Request
 - Assumes 30 minutes of work per commit
@@ -22,12 +23,14 @@ This tool consists of 3 Python scripts:
 - Handles squash-merged PRs correctly
 
 ### Slack Report
+
 - Loads huddles from `slack_huddles.json` file (via bookmarklet)
 - Filters by your user ID and date range
 - Labels all huddles as "Slack huddle #meetings"
 - Preserves actual huddle start/end times
 
 ### Formatter
+
 - Converts JSON to YAML-like time entry format
 - Merges overlapping sessions automatically
 - Sorts by timestamp
@@ -67,11 +70,13 @@ In Slack: Profile → More → Copy member ID
 ### Option 1: Individual Scripts (Separate Reports)
 
 #### GitHub Only
+
 ```bash
 ./generate-github-report.py 2026-02-08 2026-02-09 | ./format-time-report.py
 ```
 
 #### Slack Only
+
 ```bash
 ./generate-slack-report.py 2026-02-08 2026-02-09 | ./format-time-report.py
 ```
@@ -89,6 +94,7 @@ cat <(./generate-github-report.py 2026-02-08 2026-02-09) \
 ```
 
 #### Save to File
+
 ```bash
 cat <(./generate-github-report.py 2026-02-08 2026-02-09) \
     <(./generate-slack-report.py 2026-02-08 2026-02-09) \
@@ -97,6 +103,7 @@ cat <(./generate-github-report.py 2026-02-08 2026-02-09) \
 ```
 
 #### Using Default Date Range (Current Week)
+
 ```bash
 # Omit dates to use current week (Monday to today)
 cat <(./generate-github-report.py) \
@@ -153,11 +160,13 @@ If you make multiple commits within overlapping 30-minute windows, they're merge
 ### Eng Tag Extraction
 
 The script automatically:
+
 - Detects eng tags in various formats: `eng707`, `eng-707`, `ENG 707`, `eng#707`
 - Removes the eng tag from the PR title
 - Adds it as a hashtag at the end: `#eng707`
 
 Example:
+
 - PR Title: "Fix receipt issue eng-707"
 - Output: `"Fix receipt issue #eng707"`
 
@@ -168,19 +177,19 @@ Example:
 **Outputs:** JSON array of tasks
 
 **JSON Format:**
+
 ```json
 [
   {
     "name": "Fix receipt issue #eng707",
-    "sessions": [
-      {"start": 1707209340, "end": 1707211140}
-    ],
+    "sessions": [{ "start": 1707209340, "end": 1707211140 }],
     "sort_timestamp": 1707209340
   }
 ]
 ```
 
 **Command Line Options:**
+
 ```bash
 ./generate-github-report.py [start_date] [end_date] [-o output.json] [--org organization]
 ```
@@ -190,24 +199,25 @@ Example:
 **Outputs:** JSON array of tasks
 
 **JSON Format:**
+
 ```json
 [
   {
     "name": "Slack huddle #meetings",
-    "sessions": [
-      {"start": 1707212400, "end": 1707216000}
-    ],
+    "sessions": [{ "start": 1707212400, "end": 1707216000 }],
     "sort_timestamp": 1707212400
   }
 ]
 ```
 
 **Command Line Options:**
+
 ```bash
 ./generate-slack-report.py [start_date] [end_date] [-o output.json] [--slack-user-id UID] [--slack-huddles-path PATH]
 ```
 
 **Requirements:**
+
 - `SLACK_USER_ID` environment variable or `--slack-user-id` argument
 - `slack_huddles.json` file in `~/Downloads` or path specified by `SLACK_HUDDLES_PATH`
 
@@ -218,6 +228,7 @@ Example:
 **Outputs:** Formatted YAML-like text
 
 **Command Line Options:**
+
 ```bash
 ./format-time-report.py [input.json] [-o output.txt]
 ```
@@ -228,6 +239,7 @@ Example:
 ## How It Works
 
 ### GitHub Pipeline
+
 1. Fetches all repositories in the specified organization
 2. Gets all merged PRs in the date range across all repositories
 3. For each PR, checks if it contains commits by you (using your git email)
@@ -239,6 +251,7 @@ Example:
 9. Outputs JSON array of tasks with sessions
 
 ### Slack Pipeline
+
 1. Loads huddles from `slack_huddles.json` file
 2. Filters by your `SLACK_USER_ID` (only huddles you participated in)
 3. Filters by date range
@@ -247,6 +260,7 @@ Example:
 6. Outputs JSON array of tasks with sessions
 
 ### Formatting Pipeline
+
 1. Reads JSON array from all sources (GitHub, Slack, etc.)
 2. Merges overlapping time sessions within each task
 3. Sorts tasks by earliest timestamp
@@ -286,17 +300,20 @@ Example:
 ## Examples
 
 ### Example 1: GitHub Only
+
 ```bash
 ./generate-github-report.py 2026-02-03 2026-02-09 | ./format-time-report.py
 ```
 
 ### Example 2: Slack Only
+
 ```bash
 export SLACK_USER_ID='U03H3A69E2D'
 ./generate-slack-report.py 2026-02-03 2026-02-09 | ./format-time-report.py
 ```
 
 ### Example 3: Combined Report (Full Week)
+
 ```bash
 export SLACK_USER_ID='U03H3A69E2D'
 
@@ -307,6 +324,7 @@ cat <(./generate-github-report.py 2026-02-03 2026-02-09) \
 ```
 
 ### Example 4: This Week (Auto Date Range)
+
 ```bash
 export SLACK_USER_ID='U03H3A69E2D'
 
@@ -317,6 +335,7 @@ cat <(./generate-github-report.py) \
 ```
 
 ### Example 5: Save to File
+
 ```bash
 export SLACK_USER_ID='U03H3A69E2D'
 
@@ -329,7 +348,9 @@ cat <(./generate-github-report.py) \
 ## Important Notes
 
 ### GitHub Workflow
+
 This script is designed to work with your workflow:
+
 - You create a feature branch and make commits there
 - GitHub Actions creates a PR automatically (via bot)
 - The PR is squash merged, combining all commits into one
@@ -337,39 +358,48 @@ This script is designed to work with your workflow:
 - Works across all branches, not just the default branch (e.g., finds easyclaim PRs merged to `development`)
 
 ### Time Assumptions
+
 - Each GitHub commit represents a 30-minute work session ending at the commit time
 - **Overlapping sessions are merged automatically** - commits close together become one longer session
 - Slack huddles use their actual duration (not 30-minute blocks)
 - The minimum time per task is 30 minutes for GitHub commits
 
 ### Data Sources
+
 - GitHub data is fetched live via `gh` CLI
 - Slack data must be downloaded manually via bookmarklet first
 - Progress messages go to stderr, so stdout can be redirected to files
 
 ### Performance
+
 - The GitHub script may take a few minutes if you have many repositories
 - Slack processing is fast (just reads a local JSON file)
 
 ### Eng Tags
+
 - Detected in formats like: `eng707`, `eng-707`, `ENG 707`, `eng#707`, `[eng789]`
 - Automatically extracted from PR titles and formatted as hashtags
 
 ## Troubleshooting
 
 ### "SLACK_USER_ID not set"
+
 ```bash
 export SLACK_USER_ID='U03H3A69E2D'
 ```
+
 Find your ID in Slack: Profile → More → Copy member ID
 
 ### "No slack_huddles.json file found"
+
 1. Make sure you ran the bookmarklet in Slack
 2. Check the file is saved as `slack_huddles.json` (not `slack_huddles (1).json`)
 3. Verify it's in `~/Downloads` or set `SLACK_HUDDLES_PATH`
 
 ### "jq: command not found"
+
 Install jq:
+
 ```bash
 # macOS
 brew install jq
@@ -379,6 +409,7 @@ sudo apt-get install jq
 ```
 
 ### Empty Output
+
 - Check you have commits/huddles in the specified date range
 - Verify `gh` is authenticated: `gh auth status`
 - Check stderr for error messages
@@ -387,6 +418,7 @@ sudo apt-get install jq
 
 ```
 timereport/
+├── bookmarklet.js               # Run to listen to slack huddles.history call and save JSON
 ├── generate-github-report.py    # Extracts data from GitHub
 ├── generate-slack-report.py     # Extracts data from Slack huddles
 ├── format-time-report.py        # Formats JSON to YAML
@@ -396,6 +428,7 @@ timereport/
 ## Advanced Usage
 
 ### Custom Date Range for Each Source
+
 ```bash
 # Get GitHub commits from one week, Slack huddles from another
 cat <(./generate-github-report.py 2026-02-03 2026-02-09) \
@@ -405,6 +438,7 @@ cat <(./generate-github-report.py 2026-02-03 2026-02-09) \
 ```
 
 ### Inspect Raw JSON
+
 ```bash
 # See what GitHub returns
 ./generate-github-report.py 2026-02-03 2026-02-09 | jq .
@@ -419,7 +453,9 @@ cat <(./generate-github-report.py 2026-02-03 2026-02-09) \
 ```
 
 ### Add More Data Sources
+
 The JSON format is extensible. You can create your own script that outputs:
+
 ```json
 [
   {
@@ -433,6 +469,7 @@ The JSON format is extensible. You can create your own script that outputs:
 ```
 
 Then combine it with the others:
+
 ```bash
 cat <(./generate-github-report.py) \
     <(./generate-slack-report.py) \
