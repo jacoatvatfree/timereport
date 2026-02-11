@@ -51,19 +51,53 @@ def get_date_range(args):
     
     return week_start, week_end
 
+def manage_huddles_backup(huddles_path):
+    """
+    Manage backup files for slack_huddles.json:
+    1. If slack_huddles.json exists:
+       - Remove slack_huddles.json.bak if it exists
+       - Create new .bak from current slack_huddles.json
+    2. If slack_huddles.json doesn't exist, leave old .bak in place
+    Returns the path to the huddles file to load, or None if not found
+    """
+    # Expand ~ to home directory
+    huddles_path = os.path.expanduser(huddles_path)
+    
+    huddles_file = os.path.join(huddles_path, 'slack_huddles.json')
+    backup_file = os.path.join(huddles_path, 'slack_huddles.json.bak')
+    
+    # Check if new slack_huddles.json exists
+    if os.path.exists(huddles_file):
+        # Step 1: Remove old .bak file if it exists
+        if os.path.exists(backup_file):
+            try:
+                os.remove(backup_file)
+                print(f"Removed old backup: {backup_file}", file=sys.stderr)
+            except OSError as e:
+                print(f"Warning: Could not remove old backup {backup_file}: {e}", file=sys.stderr)
+        
+        # Step 2: Create new .bak from current file
+        try:
+            import shutil
+            shutil.copy2(huddles_file, backup_file)
+            print(f"Created backup: {backup_file}", file=sys.stderr)
+        except (OSError, IOError) as e:
+            print(f"Warning: Could not create backup {backup_file}: {e}", file=sys.stderr)
+        return huddles_file
+    
+    # If no new file exists, leave old .bak in place
+    return None
+
 def load_slack_huddles(huddles_path):
     """
     Load Slack huddles from JSON file
     Looks for slack_huddles.json in the specified directory
     """
-    # Expand ~ to home directory
-    huddles_path = os.path.expanduser(huddles_path)
+    # Manage backups and get file path
+    huddles_file = manage_huddles_backup(huddles_path)
     
-    # Look for slack_huddles*.json files
-    pattern = os.path.join(huddles_path, 'slack_huddles*.json')
-    matching_files = glob.glob(pattern)
-    
-    if not matching_files:
+    if not huddles_file:
+        huddles_path = os.path.expanduser(huddles_path)
         print(f"Error: No slack_huddles.json file found in {huddles_path}", file=sys.stderr)
         print("", file=sys.stderr)
         print("To generate this file:", file=sys.stderr)
@@ -71,9 +105,6 @@ def load_slack_huddles(huddles_path):
         print("2. Run the bookmarklet to download huddles data", file=sys.stderr)
         print("3. Save the file as slack_huddles.json", file=sys.stderr)
         return []
-    
-    # Use the most recent file if multiple exist
-    huddles_file = max(matching_files, key=os.path.getmtime)
     
     try:
         with open(huddles_file, 'r') as f:
@@ -132,6 +163,20 @@ def filter_slack_huddles(huddles, user_id, start_date, end_date):
 def format_huddle_task_name(huddle, user_map=None):
     """Format huddle task name - all huddles use same name"""
     return "Slack huddle #meetings"
+
+def cleanup_huddles_file(huddles_path):
+    """
+    Delete slack_huddles.json file after processing
+    """
+    huddles_path = os.path.expanduser(huddles_path)
+    huddles_file = os.path.join(huddles_path, 'slack_huddles.json')
+    
+    if os.path.exists(huddles_file):
+        try:
+            os.remove(huddles_file)
+            print(f"Deleted: {huddles_file}", file=sys.stderr)
+        except OSError as e:
+            print(f"Warning: Could not delete {huddles_file}: {e}", file=sys.stderr)
 
 def main():
     parser = argparse.ArgumentParser(description='Generate time entry report from Slack huddles')
@@ -211,6 +256,10 @@ def main():
         print(f"JSON data written to {args.output}", file=sys.stderr)
     else:
         print(output_json)
+    
+    # Step 3: Delete the slack_huddles.json file after processing
+    print("", file=sys.stderr)
+    cleanup_huddles_file(slack_huddles_path)
 
 if __name__ == '__main__':
     main()
