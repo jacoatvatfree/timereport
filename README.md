@@ -4,11 +4,12 @@ Generate time entry reports from your GitHub commits and Slack huddles.
 
 ## Overview
 
-This tool consists of 3 Python scripts:
+This tool consists of 4 Python scripts:
 
 1. **`generate-github-report.py`** - Extracts time from GitHub commits
 2. **`generate-slack-report.py`** - Extracts time from Slack huddles
-3. **`format-time-report.py`** - Formats JSON data into readable time entries
+3. **`generate-calendar-report.py`** - Extracts time from calendar events (via Nylas API)
+4. **`format-time-report.py`** - Formats JSON data into readable time entries
 
 ## Features
 
@@ -28,6 +29,15 @@ This tool consists of 3 Python scripts:
 - Filters by your user ID and date range
 - Labels all huddles as "Slack huddle #meetings"
 - Preserves actual huddle start/end times
+
+### Calendar Report
+
+- Fetches calendar events from Nylas API (Google Calendar, Outlook, Exchange, etc.)
+- Only includes busy time (excludes transparent/free events)
+- Excludes cancelled events
+- Uses actual meeting titles with #meetings hashtag
+- Preserves actual event start/end times
+- Optional: only runs if Nylas credentials are set
 
 ### Formatter
 
@@ -50,6 +60,10 @@ This tool consists of 3 Python scripts:
 # Required for Slack data
 export SLACK_USER_ID='U03H3A69E2D'           # Your Slack user ID
 
+# Optional for calendar data (via Nylas API)
+export NYLAS_API_KEY='nylas_api_key_...'     # Your Nylas API key
+export NYLAS_GRANT_ID='grant_id_...'         # Your Nylas grant ID (connected calendar)
+
 # Optional
 export SLACK_HUDDLES_PATH='~/Downloads'       # Where slack_huddles.json is located (default: ~/Downloads)
 export GITHUB_ORG='vatfree'                   # GitHub organization (default: vatfree)
@@ -64,6 +78,19 @@ In Slack: Profile → More → Copy member ID
 1. Open Slack in your browser
 2. Run the bookmarklet to download huddles data
 3. Save the file as `slack_huddles.json` in your Downloads folder (or set `SLACK_HUDDLES_PATH`)
+
+### Getting Your Nylas Credentials
+
+1. Sign up at https://dashboard.nylas.com (free for up to 5 accounts)
+2. Create a new application
+3. Connect your Google Calendar (or other calendar provider)
+4. Get your API key from Settings
+5. Get your grant ID after connecting a calendar
+6. Set the environment variables:
+   ```bash
+   export NYLAS_API_KEY='nylas_api_key_...'
+   export NYLAS_GRANT_ID='grant_id_...'
+   ```
 
 ## Usage
 
@@ -81,24 +108,30 @@ In Slack: Profile → More → Copy member ID
 ./generate-slack-report.py 2026-02-08 2026-02-09 | ./format-time-report.py
 ```
 
+#### Calendar Only
+
+```bash
+./generate-calendar-report.py 2026-02-08 2026-02-09 | ./format-time-report.py
+```
+
 ### Option 2: Combined Report (Recommended)
 
-Combine both GitHub and Slack data into one report:
+Combine GitHub, Slack, and Calendar data into one report:
 
 ```bash
 # Using process substitution and jq to merge JSON
-cat <(./generate-github-report.py 2026-02-08 2026-02-09) \
-    <(./generate-slack-report.py 2026-02-08 2026-02-09) \
-    | jq -s 'add' \
+jq -s 'add' <(./generate-github-report.py) \
+            <(./generate-slack-report.py) \
+            <(./generate-calendar-report.py) \
     | ./format-time-report.py
 ```
 
 #### Save to File
 
 ```bash
-cat <(./generate-github-report.py 2026-02-08 2026-02-09) \
-    <(./generate-slack-report.py 2026-02-08 2026-02-09) \
-    | jq -s 'add' \
+jq -s 'add' <(./generate-github-report.py 2026-02-08 2026-02-09) \
+            <(./generate-slack-report.py 2026-02-08 2026-02-09) \
+            <(./generate-calendar-report.py 2026-02-08 2026-02-09) \
     | ./format-time-report.py -o time-report.txt
 ```
 
@@ -106,9 +139,9 @@ cat <(./generate-github-report.py 2026-02-08 2026-02-09) \
 
 ```bash
 # Omit dates to use current week (Monday to today)
-cat <(./generate-github-report.py) \
-    <(./generate-slack-report.py) \
-    | jq -s 'add' \
+jq -s 'add' <(./generate-github-report.py) \
+            <(./generate-slack-report.py) \
+            <(./generate-calendar-report.py) \
     | ./format-time-report.py
 ```
 
@@ -120,12 +153,13 @@ If you prefer to save intermediate files:
 # Generate individual JSON files
 ./generate-github-report.py 2026-02-08 2026-02-09 -o github.json
 ./generate-slack-report.py 2026-02-08 2026-02-09 -o slack.json
+./generate-calendar-report.py 2026-02-08 2026-02-09 -o calendar.json
 
 # Combine them
-jq -s 'add' github.json slack.json | ./format-time-report.py
+jq -s 'add' github.json slack.json calendar.json | ./format-time-report.py
 
 # Or save combined JSON
-jq -s 'add' github.json slack.json > combined.json
+jq -s 'add' github.json slack.json calendar.json > combined.json
 ./format-time-report.py combined.json
 ```
 
@@ -148,6 +182,12 @@ tasks:
     focus:
       - 6 Feb 2026, 10:00, 60 min
       - 6 Feb 2026, 15:30, 45 min
+  - taskName: "Team Standup #meetings"
+    focus:
+      - 6 Feb 2026, 11:00, 30 min
+  - taskName: "Client Review Meeting #meetings"
+    focus:
+      - 7 Feb 2026, 14:00, 60 min
   - taskName: "Update translations #eng456"
     focus:
       - 6 Feb 2026, 08:58, 30 min
@@ -221,6 +261,33 @@ Example:
 - `SLACK_USER_ID` environment variable or `--slack-user-id` argument
 - `slack_huddles.json` file in `~/Downloads` or path specified by `SLACK_HUDDLES_PATH`
 
+### `generate-calendar-report.py`
+
+**Outputs:** JSON array of tasks
+
+**JSON Format:**
+
+```json
+[
+  {
+    "name": "Calendar Appointment #meetings",
+    "sessions": [{ "start": 1707214800, "end": 1707216600 }],
+    "sort_timestamp": 1707214800
+  }
+]
+```
+
+**Command Line Options:**
+
+```bash
+./generate-calendar-report.py [start_date] [end_date] [-o output.json] [--nylas-api-key KEY] [--nylas-grant-id ID]
+```
+
+**Requirements:**
+
+- `NYLAS_API_KEY` and `NYLAS_GRANT_ID` environment variables (or CLI arguments)
+- Nylas account with connected calendar (free for up to 5 accounts)
+
 ### `format-time-report.py`
 
 **Inputs:** JSON from stdin or file
@@ -259,9 +326,19 @@ Example:
 5. Preserves actual huddle duration from start to end
 6. Outputs JSON array of tasks with sessions
 
+### Calendar Pipeline
+
+1. Fetches events from Nylas API using `NYLAS_API_KEY` and `NYLAS_GRANT_ID`
+2. Filters by date range and busy status (only busy events, excludes free time)
+3. Excludes cancelled events
+4. Labels all events as "Calendar Appointment #meetings"
+5. Preserves actual event duration from start to end
+6. Outputs JSON array of tasks with sessions
+7. Gracefully skips if Nylas credentials are not set
+
 ### Formatting Pipeline
 
-1. Reads JSON array from all sources (GitHub, Slack, etc.)
+1. Reads JSON array from all sources (GitHub, Slack, Calendar, etc.)
 2. Merges overlapping time sessions within each task
 3. Sorts tasks by earliest timestamp
 4. Formats as YAML-like time entry submission
@@ -269,32 +346,32 @@ Example:
 ## Data Flow Diagram
 
 ```
-┌─────────────────────┐     ┌─────────────────────┐
-│ GitHub Commits      │     │ Slack Huddles       │
-│ (via gh CLI)        │     │ (slack_huddles.json)│
-└──────────┬──────────┘     └──────────┬──────────┘
-           │                           │
-           ▼                           ▼
-  ┌────────────────┐         ┌────────────────┐
-  │ generate-      │         │ generate-      │
-  │ github-report  │         │ slack-report   │
-  └────────┬───────┘         └────────┬───────┘
-           │                           │
-           │    JSON Array             │    JSON Array
-           │    ┌──────────────────┐   │
-           └───►│                  │◄──┘
-                │   jq -s 'add'    │
-                │   (merge arrays) │
-                └────────┬─────────┘
-                         │
-                         ▼    Combined JSON
-                 ┌───────────────┐
-                 │ format-time-  │
-                 │ report        │
-                 └───────┬───────┘
-                         │
-                         ▼
-                  YAML-like output
+┌─────────────────────┐     ┌─────────────────────┐     ┌─────────────────────┐
+│ GitHub Commits      │     │ Slack Huddles       │     │ Calendar Events     │
+│ (via gh CLI)        │     │ (slack_huddles.json)│     │ (via Nylas API)     │
+└──────────┬──────────┘     └──────────┬──────────┘     └──────────┬──────────┘
+           │                           │                           │
+           ▼                           ▼                           ▼
+  ┌────────────────┐         ┌────────────────┐         ┌────────────────┐
+  │ generate-      │         │ generate-      │         │ generate-      │
+  │ github-report  │         │ slack-report   │         │ calendar-report│
+  └────────┬───────┘         └────────┬───────┘         └────────┬───────┘
+           │                           │                           │
+           │    JSON Array             │    JSON Array             │    JSON Array
+           │    ┌──────────────────────────────────────────┐       │
+           └───►│                                          │◄──────┘
+                │          jq -s 'add'                     │
+                │          (merge arrays)                  │
+                └────────────────┬─────────────────────────┘
+                                 │
+                                 ▼    Combined JSON
+                         ┌───────────────┐
+                         │ format-time-  │
+                         │ report        │
+                         └───────┬───────┘
+                                 │
+                                 ▼
+                          YAML-like output
 ```
 
 ## Examples
@@ -316,10 +393,12 @@ export SLACK_USER_ID='U03H3A69E2D'
 
 ```bash
 export SLACK_USER_ID='U03H3A69E2D'
+export NYLAS_API_KEY='nylas_api_key_...'
+export NYLAS_GRANT_ID='grant_id_...'
 
-cat <(./generate-github-report.py 2026-02-03 2026-02-09) \
-    <(./generate-slack-report.py 2026-02-03 2026-02-09) \
-    | jq -s 'add' \
+jq -s 'add' <(./generate-github-report.py 2026-02-03 2026-02-09) \
+            <(./generate-slack-report.py 2026-02-03 2026-02-09) \
+            <(./generate-calendar-report.py 2026-02-03 2026-02-09) \
     | ./format-time-report.py
 ```
 
@@ -327,10 +406,12 @@ cat <(./generate-github-report.py 2026-02-03 2026-02-09) \
 
 ```bash
 export SLACK_USER_ID='U03H3A69E2D'
+export NYLAS_API_KEY='nylas_api_key_...'
+export NYLAS_GRANT_ID='grant_id_...'
 
-cat <(./generate-github-report.py) \
-    <(./generate-slack-report.py) \
-    | jq -s 'add' \
+jq -s 'add' <(./generate-github-report.py) \
+            <(./generate-slack-report.py) \
+            <(./generate-calendar-report.py) \
     | ./format-time-report.py
 ```
 
@@ -338,10 +419,12 @@ cat <(./generate-github-report.py) \
 
 ```bash
 export SLACK_USER_ID='U03H3A69E2D'
+export NYLAS_API_KEY='nylas_api_key_...'
+export NYLAS_GRANT_ID='grant_id_...'
 
-cat <(./generate-github-report.py) \
-    <(./generate-slack-report.py) \
-    | jq -s 'add' \
+jq -s 'add' <(./generate-github-report.py) \
+            <(./generate-slack-report.py) \
+            <(./generate-calendar-report.py) \
     | ./format-time-report.py -o my-timesheet.txt
 ```
 
@@ -368,12 +451,14 @@ This script is designed to work with your workflow:
 
 - GitHub data is fetched live via `gh` CLI
 - Slack data must be downloaded manually via bookmarklet first
+- Calendar data is fetched live via Nylas API (requires API key and grant ID)
 - Progress messages go to stderr, so stdout can be redirected to files
 
 ### Performance
 
 - The GitHub script may take a few minutes if you have many repositories
 - Slack processing is fast (just reads a local JSON file)
+- Calendar processing depends on Nylas API response time (usually fast)
 
 ### Eng Tags
 
@@ -395,6 +480,18 @@ Find your ID in Slack: Profile → More → Copy member ID
 1. Make sure you ran the bookmarklet in Slack
 2. Check the file is saved as `slack_huddles.json` (not `slack_huddles (1).json`)
 3. Verify it's in `~/Downloads` or set `SLACK_HUDDLES_PATH`
+
+### "Nylas credentials not set"
+
+This is just informational - calendar integration is optional. If you want to include calendar events:
+
+1. Sign up at https://dashboard.nylas.com (free for up to 5 accounts)
+2. Connect your calendar and get your credentials
+3. Set the environment variables:
+   ```bash
+   export NYLAS_API_KEY='nylas_api_key_...'
+   export NYLAS_GRANT_ID='grant_id_...'
+   ```
 
 ### "jq: command not found"
 
@@ -421,8 +518,9 @@ timereport/
 ├── bookmarklet.js               # Run to listen to slack huddles.history call and save JSON
 ├── generate-github-report.py    # Extracts data from GitHub
 ├── generate-slack-report.py     # Extracts data from Slack huddles
+├── generate-calendar-report.py  # Extracts data from calendar (via Nylas API)
 ├── format-time-report.py        # Formats JSON to YAML
-└── TIME_REPORT_README.md        # This file
+└── README.md                    # This file
 ```
 
 ## Advanced Usage
@@ -430,10 +528,10 @@ timereport/
 ### Custom Date Range for Each Source
 
 ```bash
-# Get GitHub commits from one week, Slack huddles from another
-cat <(./generate-github-report.py 2026-02-03 2026-02-09) \
-    <(./generate-slack-report.py 2026-02-01 2026-02-28) \
-    | jq -s 'add' \
+# Get GitHub commits from one week, Slack huddles from another, calendar from yet another
+jq -s 'add' <(./generate-github-report.py 2026-02-03 2026-02-09) \
+            <(./generate-slack-report.py 2026-02-01 2026-02-28) \
+            <(./generate-calendar-report.py 2026-02-01 2026-02-28) \
     | ./format-time-report.py
 ```
 
@@ -446,10 +544,14 @@ cat <(./generate-github-report.py 2026-02-03 2026-02-09) \
 # See what Slack returns
 ./generate-slack-report.py 2026-02-03 2026-02-09 | jq .
 
+# See what Calendar returns
+./generate-calendar-report.py 2026-02-03 2026-02-09 | jq .
+
 # See combined data
-cat <(./generate-github-report.py 2026-02-03 2026-02-09) \
-    <(./generate-slack-report.py 2026-02-03 2026-02-09) \
-    | jq -s 'add' | jq .
+jq -s 'add' <(./generate-github-report.py 2026-02-03 2026-02-09) \
+            <(./generate-slack-report.py 2026-02-03 2026-02-09) \
+            <(./generate-calendar-report.py 2026-02-03 2026-02-09) \
+    | jq .
 ```
 
 ### Add More Data Sources
@@ -471,9 +573,9 @@ The JSON format is extensible. You can create your own script that outputs:
 Then combine it with the others:
 
 ```bash
-cat <(./generate-github-report.py) \
-    <(./generate-slack-report.py) \
-    <(./my-custom-report.py) \
-    | jq -s 'add' \
+jq -s 'add' <(./generate-github-report.py) \
+            <(./generate-slack-report.py) \
+            <(./generate-calendar-report.py) \
+            <(./my-custom-report.py) \
     | ./format-time-report.py
 ```
